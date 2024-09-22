@@ -9,7 +9,7 @@ The script has been calibrated to avoid spam blocks.
 - Installed .ngcs script support (Run NGC-TOOLKIT as administrator then go to Help \> Install .ngcs script support)
 
 #### Requirements (Linux)
-- [https://github.com/AbyssMorgan/NGC-TOOLKIT?tab=readme-ov-file#requirements-linux](Same as NGC-TOOLKIT)
+- [Same as NGC-TOOLKIT](https://github.com/AbyssMorgan/NGC-TOOLKIT?tab=readme-ov-file#requirements-linux)
 
 #### How to use (Windows)
 - Run DeviantArt.ngcs
