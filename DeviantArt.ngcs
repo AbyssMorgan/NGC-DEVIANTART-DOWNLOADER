@@ -214,6 +214,7 @@
 			if(!$request) return false;
 	
 			$image_extensions = explode(" ", $this->core->config->get('EXTENSIONS_PHOTO'));
+			$skip_low_quality = $this->config->get('DEVIANTART_SKIP_LOW_QUALITY', false);
 	
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => false], true);
 	
@@ -252,7 +253,7 @@
 						if($response['code'] == 200){
 							file_put_contents($file_path, $response['data']);
 							$this->core->delete($file);
-							if(in_array($file_ext, $image_extensions) || $file_ext == 'gif'){
+							if($skip_low_quality && (in_array($file_ext, $image_extensions) || $file_ext == 'gif')){
 								$size = explode("x", $this->core->media->get_image_resolution($file_path));
 								$w = intval($size[0]);
 								$h = intval($size[1]);
