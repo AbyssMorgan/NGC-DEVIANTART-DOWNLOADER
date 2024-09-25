@@ -308,10 +308,10 @@
 			$links = explode(" ", $links);
 		
 			foreach($links as $link){
-				$link = str_replace(["https://","http://","www.deviantart.com/","deviantart.com/"],[""],$link);
-				$pos = strpos($link,"?");
+				$link = str_replace(["https://", "http://", "www.deviantart.com/", "deviantart.com/"], [""], $link);
+				$pos = strpos($link, "?");
 				if($pos !== false){
-					$link = substr($link,0,$pos);
+					$link = substr($link, 0, $pos);
 				}
 				$parts = explode("/", $link, 3);
 				$user_name = $parts[0];
