@@ -1,4 +1,4 @@
-@AppType NGC_SCRIPT 2.3.0
+@AppType NGC_SCRIPT 2.3.3
 <?php
 	declare(strict_types=1);
 
@@ -15,7 +15,7 @@
 		private Script $core;
 		private IniFile $config;
 		private string $path;
-	
+
 		public function __construct(Script $core, string $path){
 			$this->core = $core;
 			$this->core->app_name = $this->app_name;
@@ -24,7 +24,7 @@
 			$this->path = $path;
 			$this->config = new IniFile($this->core->get_path("$this->path/data/config.ini"), true);
 		}
-	
+
 		public function help() : void {
 			$auto_download = $this->config->get('DEVIANTART_AUTO_DOWNLOAD', true);
 			$this->core->set_tool("Menu");
@@ -36,7 +36,7 @@
 				' 3 - Toggle auto download ('.($auto_download ? 'Unlocked' : 'Locked').')',
 			]);
 		}
-	
+
 		public function action(string $action) : bool {
 			$this->params = [];
 			$this->action = $action;
@@ -48,7 +48,7 @@
 			}
 			return false;
 		}
-	
+
 		public function tool_fetch_all_new_posts(bool $auto = false) : bool {
 			$this->core->clear();
 			$this->core->set_tool("Fetch all new posts");
@@ -58,16 +58,16 @@
 				$this->core->pause(" ");
 				return false;
 			}
-	
+
 			$auto_download = $this->config->get('DEVIANTART_AUTO_DOWNLOAD', true);
 			if($auto && !$auto_download) return false;
-	
+
 			$target_url = "https://www.deviantart.com";
 			$request = $this->login($target_url);
 			if(!$request) return false;
-	
+
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => false], true);
-	
+
 			$this->core->echo(" Get users list");
 			$users = $this->user_list();
 			foreach($users as $user){
@@ -75,10 +75,16 @@
 				$user_data = $this->user_load($user_name);
 				$url_home = "$target_url/$user_name";
 				$url_gallery = "$url_home/gallery/all";
-				sleep(2);
+				sleep(1);
+				retry_fetch_user:
 				$this->core->echo(" Fetch user \"$user_name\"");
 				$response = $request->get($url_home);
 				switch($response['code']){
+					case 403: {
+						$this->core->echo(" Failed fetch user \"$user_name\", retry in 20 seconds...");
+						sleep(20);
+						goto retry_fetch_user;
+					}
 					case 404: {
 						$this->user_deactivate($user_name);
 						$this->core->write_error("INACTIVE USER \"$user_name\"");
@@ -90,15 +96,15 @@
 						break;
 					}
 					case 200: {
-						sleep(2);
+						usleep(300000);
+						retry_user:
 						$this->core->echo(" Get items for \"$url_gallery\"");
 						$response = $request->get($url_gallery);
 						switch($response['code']){
 							case 403: {
-								$this->core->write_error("FAILED GET ITEMS FOR \"$url_gallery\" Code: {$response['code']}");
-								$user_data['initial'] = true;
-								$this->user_save($user_name, $user_data);
-								break;
+								$this->core->echo(" Failed get items for \"$url_gallery\", retry in 20 seconds...");
+								sleep(20);
+								goto retry_user;
 							}
 							case 200: {
 								$crawler = new Crawler($response['data']);
@@ -147,16 +153,16 @@
 										$this->user_save($user_name, $user_data);
 										if($i < $last_page){
 											$link = "$url_gallery?page=".($i + 1);
-											sleep(2);
+											usleep(300000);
+											retry_gallery:
 											$this->core->echo(" Get items for \"$link\"");
 											$response = $request->get($link);
 											if($response['code'] == 200){
 												$crawler = new Crawler($response['data']);
 											} else if($response['code'] == 403){
-												$this->core->write_error("FAILED GET ITEMS FOR \"$link\" Code: {$response['code']}");
-												$user_data['initial'] = true;
-												$this->user_save($user_name, $user_data);
-												break 1;
+												$this->core->echo(" Failed get items for \"$link\", retry in 20 seconds...");
+												sleep(20);
+												goto retry_gallery;
 											} else {
 												$this->core->write_error("FAILED GET ITEMS FOR \"$link\" Code: {$response['code']}");
 												break 1;
@@ -178,18 +184,22 @@
 						break;
 					}
 				}
+				if($user_data['initial'] ?? true){
+					$user_data['initial'] = false;
+					$this->user_save($user_name, $user_data);
+				}
 			}
-	
+
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => true], true);
-	
+
 			if(!$auto){
 				$this->core->open_logs();
 				$this->core->pause(" Operation done, press any key to back to menu");
 			}
-	
+
 			return false;
 		}
-	
+
 		public function tool_download(bool $auto = false) : bool {
 			$this->core->clear();
 			$this->core->set_tool("Download");
@@ -199,25 +209,25 @@
 				$this->core->pause(" ");
 				return false;
 			}
-	
+
 			$auto_download = $this->config->get('DEVIANTART_AUTO_DOWNLOAD', true);
 			if($auto && !$auto_download) return false;
-	
+
 			$path_download = $this->get_value('DEVIANTART_PATH_DOWNLOAD');
 			if(is_null($path_download)){
 				$path_download = $this->core->configure_path('Download');
 				$this->set_value('DEVIANTART_PATH_DOWNLOAD', $path_download);
 			}
-			
+
 			$target_url = "https://www.deviantart.com";
 			$request = $this->login($target_url);
 			if(!$request) return false;
-	
+
 			$image_extensions = explode(" ", $this->core->config->get('EXTENSIONS_PHOTO'));
 			$skip_low_quality = $this->config->get('DEVIANTART_SKIP_LOW_QUALITY', false);
-	
+
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => false], true);
-	
+
 			$this->core->echo(" Get queued links");
 			$files = $this->core->get_files($this->core->get_path("$this->path/data/links"), ['json']);
 			$progress = 0;
@@ -235,8 +245,7 @@
 					$link = $this->get_download_url($response['data']);
 					if(is_null($link)){
 						$this->core->write_error("FAILED GET DOWNLOAD URL \"$link_data->link\"");
-						$this->core->delete($file);
-						sleep(3);
+						$this->core->trash($file);
 					} else {
 						$file_name = explode('?', $link)[0];
 						$file_name_parts = explode('/', $file_name);
@@ -269,8 +278,8 @@
 						} else {
 							$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 						}
-						sleep(3);
 					}
+					usleep(200000);
 				} else {
 					$this->core->write_error("FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
 					if($response['code'] == 404){
@@ -280,18 +289,17 @@
 				}
 				$this->core->progress($progress, $total);
 			}
-	
+
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => true], true);
-	
-	
+
 			if(!$auto){
 				$this->core->open_logs();
 				$this->core->pause(" Operation done, press any key to back to menu");
 			}
-			
+
 			return false;
 		}
-	
+
 		public function tool_add_users() : bool {
 			$this->core->clear();
 			$this->core->set_tool("Add users");
@@ -301,12 +309,14 @@
 				$this->core->pause(" ");
 				return false;
 			}
-	
+
 			$links = $this->core->get_input(" Account links: ");
 			if($links == '#') return false;
-	
+
+			$blacklist = $this->get_black_list();
+
 			$links = explode(" ", $links);
-		
+
 			foreach($links as $link){
 				$link = str_replace(["https://", "http://", "www.deviantart.com/", "deviantart.com/"], [""], $link);
 				$pos = strpos($link, "?");
@@ -316,19 +326,21 @@
 				$parts = explode("/", $link, 3);
 				$user_name = $parts[0];
 				if(empty($user_name)) continue;
-				if(!file_exists($this->user_get_path($user_name))){
+				if(in_array($user_name, $blacklist)){
+					$this->core->echo(" Skip \"https://www.deviantart.com/$user_name\" [BLACKLIST]");
+				} else if(!file_exists($this->user_get_path($user_name))){
 					$this->user_save($user_name, $this->user_load($user_name));
 					$this->core->echo(" Add \"https://www.deviantart.com/$user_name\"");
 				} else {
 					$this->core->echo(" Skip \"https://www.deviantart.com/$user_name\" [ALREADY EXISTS]");
 				}
 			}
-	
+
 			$this->core->pause(" Operation done, press any key to back to menu");
-	
+
 			return false;
 		}
-	
+
 		private function login(string $url) : Request|bool {
 			$login = $this->config->get('DEVIANTART_LOGIN');
 			if(is_null($login)){
@@ -365,7 +377,7 @@
 					'lu_token' => $lu_token,
 					'username' => $login,
 				]);
-	
+
 				$crawler = new Crawler($response['data']);
 				$element = $crawler->filter('form[action="/_sisu/do/signin"]')->first();
 				$csrf = $element->filter('input[name="csrf_token"]')->attr('value');
@@ -391,7 +403,7 @@
 			}
 			return $request;
 		}
-	
+
 		public function tool_toggle_auto_download() : bool {
 			$this->core->clear();
 			$this->core->set_tool("Toggle auto download");
@@ -409,28 +421,38 @@
 		private function get_download_url(string $response_data) : ?string {
 			$link = null;
 			$crawler = new Crawler($response_data);
-			$element = $crawler->filter('main > div > div > section > div > div:nth-child(3) > div:nth-child(2) > span:nth-child(2) > div > div > a');
+			$element = $crawler->filter('main > div > div > section > div > div > div:nth-child(3) > span:nth-child(3) > div > div > a');
 			if($element->count() > 0){
 				$link = $element->first()->attr('href');
 				if(strpos($link, "purchase") !== false) $link = null;
 			}
-			if(!is_null($link)) return $link;
+			if(!is_null($link)){
+				return $link;
+			}
 
-			$element = $crawler->filter('main > div > div > div > div > div > div > img');
-			if($element->count() > 0) return $element->first()->attr('src');
+			$element = $crawler->filter('main > div > div > div > div > div > img');
+			if($element->count() > 0){
+				return $element->first()->attr('src');
+			}
 
 			$element = $crawler->filter('main > div > div > div > div > div > div > div > img');
-			if($element->count() > 0) return $element->first()->attr('src');
+			if($element->count() > 0){
+				return $element->first()->attr('src');
+			}
 
 			$element = $crawler->filter('main > div > div > div > div > div > div > div > div > img');
-			if($element->count() > 0) return $element->first()->attr('src');
+			if($element->count() > 0){
+				return $element->first()->attr('src');
+			}
 
 			$element = $crawler->filter('main > div > div > div > div > div > div > div > div video');
-			if($element->count() > 0) return $element->first()->attr('src');
+			if($element->count() > 0){
+				return $element->first()->attr('src');
+			}
 
 			return null;
 		}
-	
+
 		private function get_value(string $name) : string {
 			if($this->core->windows){
 				return $this->config->get("{$name}_WINDOWS");
@@ -438,7 +460,7 @@
 				return $this->config->get("{$name}_LINUX");
 			}
 		}
-	
+
 		private function set_value(string $name, string $value) : void {
 			if($this->core->windows){
 				$this->config->update(["{$name}_WINDOWS" => $value], true);
@@ -454,21 +476,35 @@
 			if(!file_exists($folder) && !$this->core->mkdir($folder)) return false;
 			return true;
 		}
-	
+
+		private function get_black_list() : array {
+			$file = $this->core->get_path("$this->path/data/users.blacklist.txt");
+			if(!file_exists($file)) return [];
+			$data = [];
+			$fp = @fopen($file, "r");
+			if($fp){
+				while(($line = fgets($fp)) !== false){
+					array_push($data, trim($line));
+				}
+				fclose($fp);
+			}
+			return $data;
+		}
+
 		private function user_get_path(string $name) : string {
 			return $this->core->get_path("$this->path/data/users/$name.json");
 		}
-	
-		private function user_list() : array { 
+
+		private function user_list() : array {
 			return $this->core->get_files($this->core->get_path("$this->path/data/users"), ['json']);
 		}
-	
+
 		private function user_load(string $name) : array {
 			$file = $this->user_get_path($name);
 			if(!file_exists($file)) return ['initial' => true, 'items' => []];
 			return json_decode(file_get_contents($file), true);
 		}
-	
+
 		private function user_save(string $name, array $data) : void {
 			$file = $this->user_get_path($name);
 			if(file_exists($file)){
@@ -479,7 +515,7 @@
 			$current = json_encode($data);
 			if($previous != $current) file_put_contents($file, $current);
 		}
-	
+
 		private function user_put_link(string $name, string $post_id, string $url) : bool {
 			$file = $this->core->get_path("$this->path/data/links/$post_id.json");
 			if(file_exists($file)) return false;
@@ -491,13 +527,13 @@
 			file_put_contents($file, json_encode($data));
 			return true;
 		}
-	
+
 		private function user_deactivate(string $name) : void {
 			$input = $this->core->get_path("$this->path/data/users/$name.json");
 			$output = $this->core->get_path("$this->path/data/users.deactivated/$name.json");
-			$this->core->rename($input, $output);
+			$this->core->move($input, $output);
 		}
-	
+
 	}
 
 	$this->core->tool = new DeviantArt($this->core, $this->path);
@@ -510,5 +546,5 @@
 
 		}
 	}
-	
+
 ?>
