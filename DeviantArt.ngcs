@@ -45,6 +45,7 @@
 				case '1': return $this->tool_download();
 				case '2': return $this->tool_add_users();
 				case '3': return $this->tool_toggle_auto_download();
+				case '4': return $this->tool_fetch_links();
 			}
 			return false;
 		}
@@ -454,7 +455,7 @@
 		}
 
 		private function get_value(string $name) : string {
-			if($this->core->windows){
+			if($this->core->get_system_type() == SYSTEM_TYPE_WINDOWS){
 				return $this->config->get("{$name}_WINDOWS");
 			} else {
 				return $this->config->get("{$name}_LINUX");
@@ -462,7 +463,7 @@
 		}
 
 		private function set_value(string $name, string $value) : void {
-			if($this->core->windows){
+			if($this->core->get_system_type() == SYSTEM_TYPE_WINDOWS){
 				$this->config->update(["{$name}_WINDOWS" => $value], true);
 			} else {
 				$this->config->update(["{$name}_LINUX" => $value], true);
