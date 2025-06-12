@@ -1,4 +1,4 @@
-@AppType NGC_SCRIPT 2.3.3
+@AppType NGC_SCRIPT 2.6.1
 <?php
 	declare(strict_types=1);
 
@@ -45,7 +45,6 @@
 				case '1': return $this->tool_download();
 				case '2': return $this->tool_add_users();
 				case '3': return $this->tool_toggle_auto_download();
-				case '4': return $this->tool_fetch_links();
 			}
 			return false;
 		}
@@ -216,7 +215,8 @@
 
 			$path_download = $this->get_value('DEVIANTART_PATH_DOWNLOAD');
 			if(is_null($path_download)){
-				$path_download = $this->core->configure_path('Download');
+				$path_download = $this->core->get_input_folder(" Download (Folder): ", true);
+				if($path_download === false) return false;
 				$this->set_value('DEVIANTART_PATH_DOWNLOAD', $path_download);
 			}
 
