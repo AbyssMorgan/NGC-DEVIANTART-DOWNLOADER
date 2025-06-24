@@ -224,7 +224,6 @@
 			$request = $this->login($target_url);
 			if(!$request) return false;
 
-			$image_extensions = explode(" ", $this->core->config->get('EXTENSIONS_PHOTO'));
 			$skip_low_quality = $this->config->get('DEVIANTART_SKIP_LOW_QUALITY', false);
 
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => false], true);
@@ -263,7 +262,7 @@
 						if($response['code'] == 200){
 							file_put_contents($file_path, $response['data']);
 							$this->core->delete($file);
-							if($skip_low_quality && (in_array($file_ext, $image_extensions) || $file_ext == 'gif')){
+							if($skip_low_quality && (in_array($file_ext, $this->core->media->extensions_images) || $file_ext == 'gif')){
 								$size = explode("x", $this->core->media->get_image_resolution($file_path));
 								$w = intval($size[0]);
 								$h = intval($size[1]);
@@ -350,7 +349,7 @@
 			}
 			$password = $this->config->get('DEVIANTART_PASSWORD');
 			if(is_null($password)){
-				$password = $this->core->get_input(" Password: ");
+				$password = $this->core->get_input_password(" Password: ");
 				$this->config->set('DEVIANTART_PASSWORD', base64_encode($password));
 			} else {
 				$password = base64_decode($password);
@@ -454,7 +453,7 @@
 			return null;
 		}
 
-		private function get_value(string $name) : string {
+		private function get_value(string $name) : ?string {
 			if($this->core->get_system_type() == SYSTEM_TYPE_WINDOWS){
 				return $this->config->get("{$name}_WINDOWS");
 			} else {
