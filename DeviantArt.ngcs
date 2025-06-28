@@ -1,6 +1,8 @@
-@AppType NGC_SCRIPT 2.6.1
+@AppType NGC_SCRIPT 2.7.0
 <?php
 	declare(strict_types=1);
+
+	require $this->path.'/vendor/autoload.php';
 
 	use NGC\Core\Request;
 	use NGC\Core\IniFile;
@@ -108,7 +110,7 @@
 							}
 							case 200: {
 								$crawler = new Crawler($response['data']);
-								$links = $crawler->filter('#sub-folder-gallery > div > div:nth-child(3) > div > a')->each(function (Crawler $node, $i) : string {
+								$links = $crawler->filter('#sub-folder-gallery > div > div:nth-child(3) > div > a')->each(function(Crawler $node, $i) : string {
 									return $node->text();
 								});
 								$index = count($links) - 2;
@@ -119,7 +121,7 @@
 								}
 								if($last_page > 0){
 									for($i = 1; $i <= $last_page; $i++){
-										$links = $crawler->filter('#sub-folder-gallery > div > div:nth-child(2) > div > div > div > div > div > div > * > a')->each(function (Crawler $node, $i) : string {
+										$links = $crawler->filter('#sub-folder-gallery > div > div:nth-child(2) > div > div > div > div > div > div > * > a')->each(function(Crawler $node, $i) : string {
 											return $node->attr('href');
 										});
 										$links = array_unique($links);
@@ -356,6 +358,7 @@
 			}
 			if($this->config->is_changed()) $this->config->save();
 			$request = new Request(false);
+			$request->set_http_version(CURL_HTTP_VERSION_2);
 			$request->toggle_cookie(true, $this->core->get_path("$this->path/data/cookie.txt"));
 			$this->core->echo(" Login \"$url\"");
 			$response = $request->get("$url/users/login");
