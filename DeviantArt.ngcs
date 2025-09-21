@@ -230,22 +230,16 @@
 
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => false], true);
 
-			$this->core->echo(" Get queued links");
-			$files = $this->core->get_files($this->core->get_path("$this->path/data/links"), ['json']);
-			$progress = 0;
-			$total = count($files);
-			if($total == 0){
-				$this->core->echo(" Abort, no links in queue");
-			}
-			foreach($files as $file){
+			$this->core->echo(" Process queued links");
+			$this->core->process_files($this->core->get_path("$this->path/data/links"), function(string $file) use ($path_download, $request, $skip_low_quality) : bool {
 				$link_data = json_decode(file_get_contents($file));
-				$progress++;
 				$path = $this->core->get_path("$path_download/DEV $link_data->name");
 				if(!file_exists($path)) $this->core->mkdir($path);
 				$response = $request->get($link_data->link);
 				if($response['code'] == 200){
 					$link = $this->get_download_url($response['data']);
 					if(is_null($link)){
+						$this->core->echo(" FAILED GET DOWNLOAD URL \"$link_data->link\"");
 						$this->core->write_error("FAILED GET DOWNLOAD URL \"$link_data->link\"");
 						$this->core->trash($file);
 					} else {
@@ -256,12 +250,14 @@
 						$file_path = $this->core->get_path("$path/".sprintf("%010d", $link_data->post_id).".$file_ext");
 						if(file_exists($file_path) && filesize($file_path) > 0){
 							$this->core->delete($file);
+							$this->core->echo(" File already downloaded \"$file_path\"");
 							$this->core->write_error("File already downloaded \"$file_path\"");
-							$this->core->progress($progress, $total);
-							continue;
+							return false;
 						}
+						$this->core->echo(" DOWNLOAD \"$link\"");
 						$response = $request->get($link, [], true);
 						if($response['code'] == 200){
+							$this->core->echo(" SAVE \"$file_path\"");
 							file_put_contents($file_path, $response['data']);
 							$this->core->delete($file);
 							if($skip_low_quality && (in_array($file_ext, $this->core->media->extensions_images) || $file_ext == 'gif')){
@@ -271,26 +267,30 @@
 								$quality = intval($this->core->media->get_media_quality($w, $h));
 								if($file_ext == 'gif'){
 									if($quality < 240){
+										$this->core->echo(" TRASH LOW QUALITY \"$file_path\"");
 										$this->core->trash($file_path);
 									}
 								} else if($quality < 480 || ($w < 512 && $h < 512) || $w < 300 || $h < 300){
+									$this->core->echo(" TRASH LOW QUALITY \"$file_path\"");
 									$this->core->trash($file_path);
 								}
 							}
 						} else {
+							$this->core->echo(" FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 							$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 						}
 					}
 					usleep(200000);
 				} else {
+					$this->core->echo(" FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
 					$this->core->write_error("FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
 					if($response['code'] == 404){
 						$this->core->delete($file);
 					}
 					sleep(3);
 				}
-				$this->core->progress($progress, $total);
-			}
+				return true;
+			}, ['json']);
 
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => true], true);
 
