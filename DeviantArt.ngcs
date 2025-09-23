@@ -231,10 +231,12 @@
 			$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => false], true);
 
 			$this->core->echo(" Process queued links");
-			$this->core->process_files($this->core->get_path("$this->path/data/links"), function(string $file) use ($path_download, $request, $skip_low_quality) : bool {
+			$input = $this->core->get_path("$this->path/data/links");
+			$this->core->process_files($input, function(string $file) use ($input, $path_download, $request, $skip_low_quality) : bool {
 				$link_data = json_decode(file_get_contents($file));
 				$path = $this->core->get_path("$path_download/DEV $link_data->name");
 				if(!file_exists($path)) $this->core->mkdir($path);
+				retry_fetch:
 				$response = $request->get($link_data->link);
 				if($response['code'] == 200){
 					$link = $this->get_download_url($response['data']);
@@ -254,6 +256,13 @@
 							$this->core->write_error("File already downloaded \"$file_path\"");
 							return false;
 						}
+						if(str_starts_with($link, "data:")){
+							$this->core->echo(" INVALID LINK \"$link_data->link\"");
+							$this->core->write_error("INVALID LINK \"$link_data->link\"");
+							$this->core->delete($file);
+							return false;
+						}
+						retry_download:
 						$this->core->echo(" DOWNLOAD \"$link\"");
 						$response = $request->get($link, [], true);
 						if($response['code'] == 200){
@@ -278,14 +287,31 @@
 						} else {
 							$this->core->echo(" FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 							$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
+							if($response['code'] == 403 && str_contains($response['data'], "CloudFront")){
+								$this->core->echo(" Retry in 20 seconds...");
+								sleep(20);
+								goto retry_download;
+							} elseif($response['code'] == 404){
+								$this->core->delete($file);
+							} else {
+								$this->core->write_error($this->core->get_print($response));
+								$this->core->move($file, $this->core->get_path("$input/../errors/{$response['code']}/".pathinfo($file, PATHINFO_BASENAME)));
+							}
 						}
 					}
 					usleep(200000);
 				} else {
 					$this->core->echo(" FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
 					$this->core->write_error("FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
-					if($response['code'] == 404){
+					if($response['code'] == 403 && str_contains($response['data'], "CloudFront")){
+						$this->core->echo(" Retry in 20 seconds...");
+						sleep(20);
+						goto retry_fetch;
+					} elseif($response['code'] == 404){
 						$this->core->delete($file);
+					} else {
+						$this->core->write_error($this->core->get_print($response));
+						$this->core->move($file, $this->core->get_path("$input/../errors/{$response['code']}/".pathinfo($file, PATHINFO_BASENAME)));
 					}
 					sleep(3);
 				}
