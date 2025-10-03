@@ -76,114 +76,129 @@
 				$user_name = pathinfo($user, PATHINFO_FILENAME);
 				$user_data = $this->user_load($user_name);
 				$url_home = "$target_url/$user_name";
-				$url_gallery = "$url_home/gallery/all";
-				sleep(1);
-				retry_fetch_user:
-				$this->core->echo(" Fetch user \"$user_name\"");
-				$response = $request->get($url_home);
-				switch($response['code']){
-					case 403: {
-						$this->core->echo(" Failed fetch user \"$user_name\", retry in 20 seconds...");
-						sleep(20);
-						goto retry_fetch_user;
-					}
-					case 404: {
-						$this->user_deactivate($user_name);
-						$this->core->write_error("INACTIVE USER \"$user_name\"");
-						break;
-					}
-					case 401: {
-						$this->user_deactivate($user_name);
-						$this->core->write_error("UNABLE TO ACCESS USER \"$user_name\"");
-						break;
-					}
-					case 200: {
-						usleep(300000);
-						retry_user:
-						$this->core->echo(" Get items for \"$url_gallery\"");
-						$response = $request->get($url_gallery);
-						switch($response['code']){
-							case 403: {
-								$this->core->echo(" Failed get items for \"$url_gallery\", retry in 20 seconds...");
-								sleep(20);
-								goto retry_user;
+				if(is_null($user_data['galleries'])){
+					$galleries = ['all'];
+				} else {
+					$galleries = $user_data['galleries'];
+				}
+				foreach($galleries as $gallery){
+					$url_gallery = "$url_home/gallery/$gallery";
+					sleep(1);
+					retry_fetch_user:
+					$this->core->echo(" Fetch user \"$user_name\"");
+					$response = $request->get($url_home);
+					switch($response['code']){
+						case 403: {
+							$this->core->echo(" Failed fetch user \"$user_name\", retry in 20 seconds...");
+							sleep(20);
+							goto retry_fetch_user;
+						}
+						case 404: {
+							if(is_null($user_data['galleries'])){
+								$this->user_deactivate($user_name);
+								$this->core->write_error("INACTIVE USER \"$user_name\"");
+							} else {
+								$this->core->write_error("UNABLE TO ACCESS GALLERY \"$url_home/gallery/$gallery\"");
 							}
-							case 200: {
-								$crawler = new Crawler($response['data']);
-								$links = $crawler->filter('#sub-folder-gallery > div > div:nth-child(3) > div > a')->each(function(Crawler $node, $i) : string {
-									return $node->text();
-								});
-								$index = count($links) - 2;
-								if(isset($links[$index])){
-									$last_page = intval($links[$index]);
-								} else {
-									$last_page = 1;
+							break;
+						}
+						case 401: {
+							$this->user_deactivate($user_name);
+							$this->core->write_error("UNABLE TO ACCESS USER \"$user_name\"");
+							break;
+						}
+						case 200: {
+							usleep(300000);
+							retry_user:
+							$this->core->echo(" Get items for \"$url_gallery\"");
+							$response = $request->get($url_gallery);
+							switch($response['code']){
+								case 403: {
+									$this->core->echo(" Failed get items for \"$url_gallery\", retry in 20 seconds...");
+									sleep(20);
+									goto retry_user;
 								}
-								if($last_page > 0){
-									for($i = 1; $i <= $last_page; $i++){
-										$links = $crawler->filter('#sub-folder-gallery > div > div:nth-child(2) > div > div > div > div > div > div > * > a')->each(function(Crawler $node, $i) : string {
-											return $node->attr('href');
-										});
-										$links = array_unique($links);
-										if($i == 1 && empty($links)){
-											$this->user_deactivate($user_name);
-											$this->core->write_error("INACTIVE USER \"$user_name\"");
-											break 1;
-										}
-										if(!($user_data['initial'] ?? true) && isset($links[0])){
-											$link = $links[0];
-											$pos = strrpos($link, '-');
-											$post_id = substr($link, $pos + 1);
-											if(is_numeric($post_id) && in_array(intval($post_id), $user_data['items'])){
-												$this->core->echo(" Skip get items \"$user_name\"");
+								case 200: {
+									$crawler = new Crawler($response['data']);
+									$links = $crawler->filter('#sub-folder-gallery > div > div:nth-child(3) > div > a')->each(function(Crawler $node, $i) : string {
+										return $node->text();
+									});
+									$index = count($links) - 2;
+									if(isset($links[$index])){
+										$last_page = intval($links[$index]);
+									} else {
+										$last_page = 1;
+									}
+									if($last_page > 0){
+										for($i = 1; $i <= $last_page; $i++){
+											$links = $crawler->filter('#sub-folder-gallery > div > div:nth-child(2) > div > div > div > div > div > div > * > a')->each(function(Crawler $node, $i) : string {
+												return $node->attr('href');
+											});
+											$links = array_unique($links);
+											if($i == 1 && empty($links)){
+												if(is_null($user_data['galleries'])){
+													$this->user_deactivate($user_name);
+													$this->core->write_error("INACTIVE USER \"$user_name\"");
+												} else {
+													$this->core->write_error("UNABLE TO ACCESS GALLERY \"$url_home/gallery/$gallery\"");
+												}
 												break 1;
 											}
-										}
-										$count = 0;
-										foreach($links as $link){
-											$pos = strrpos($link, '-');
-											$post_id = substr($link, $pos + 1);
-											if(is_numeric($post_id) && !in_array(intval($post_id), $user_data['items'])){
-												array_push($user_data['items'], intval($post_id));
-												$this->user_put_link($user_name, $post_id, $link);
-												$count++;
+											if(!($user_data['initial'] ?? true) && isset($links[0])){
+												$link = $links[0];
+												$pos = strrpos($link, '-');
+												$post_id = substr($link, $pos + 1);
+												if(is_numeric($post_id) && in_array(intval($post_id), $user_data['items'])){
+													$this->core->echo(" Skip get items \"$user_name\"");
+													break 1;
+												}
 											}
-										}
-										if($count > 0){
-											$user_data['changed_at'] = date("Y-m-d H:i:s");
-										}
-										$this->user_save($user_name, $user_data);
-										if($i < $last_page){
-											$link = "$url_gallery?page=".($i + 1);
-											usleep(300000);
-											retry_gallery:
-											$this->core->echo(" Get items for \"$link\"");
-											$response = $request->get($link);
-											if($response['code'] == 200){
-												$crawler = new Crawler($response['data']);
-											} else if($response['code'] == 403){
-												$this->core->echo(" Failed get items for \"$link\", retry in 20 seconds...");
-												sleep(20);
-												goto retry_gallery;
-											} else {
-												$this->core->write_error("FAILED GET ITEMS FOR \"$link\" Code: {$response['code']}");
-												break 1;
+											$count = 0;
+											foreach($links as $link){
+												$pos = strrpos($link, '-');
+												$post_id = substr($link, $pos + 1);
+												if(is_numeric($post_id) && !in_array(intval($post_id), $user_data['items'])){
+													array_push($user_data['items'], intval($post_id));
+													$this->user_put_link($user_name, $post_id, $link);
+													$count++;
+												}
+											}
+											if($count > 0){
+												$user_data['changed_at'] = date("Y-m-d H:i:s");
+											}
+											$this->user_save($user_name, $user_data);
+											if($i < $last_page){
+												$link = "$url_gallery?page=".($i + 1);
+												usleep(300000);
+												retry_gallery:
+												$this->core->echo(" Get items for \"$link\"");
+												$response = $request->get($link);
+												if($response['code'] == 200){
+													$crawler = new Crawler($response['data']);
+												} elseif($response['code'] == 403){
+													$this->core->echo(" Failed get items for \"$link\", retry in 20 seconds...");
+													sleep(20);
+													goto retry_gallery;
+												} else {
+													$this->core->write_error("FAILED GET ITEMS FOR \"$link\" Code: {$response['code']}");
+													break 1;
+												}
 											}
 										}
 									}
+									break;
 								}
-								break;
+								default: {
+									$this->core->write_error("FAILED GET ITEMS FOR \"$url_gallery\" Code: {$response['code']}");
+									break;
+								}
 							}
-							default: {
-								$this->core->write_error("FAILED GET ITEMS FOR \"$url_gallery\" Code: {$response['code']}");
-								break;
-							}
+							break;
 						}
-						break;
-					}
-					default: {
-						$this->core->write_error("FAILED FETCH USER \"$user_name\" Code: {$response['code']}");
-						break;
+						default: {
+							$this->core->write_error("FAILED FETCH USER \"$user_name\" Code: {$response['code']}");
+							break;
+						}
 					}
 				}
 				if($user_data['initial'] ?? true){
@@ -279,21 +294,22 @@
 										$this->core->echo(" TRASH LOW QUALITY \"$file_path\"");
 										$this->core->trash($file_path);
 									}
-								} else if($quality < 480 || ($w < 512 && $h < 512) || $w < 300 || $h < 300){
+								} elseif($quality < 480 || ($w < 512 && $h < 512) || $w < 300 || $h < 300){
 									$this->core->echo(" TRASH LOW QUALITY \"$file_path\"");
 									$this->core->trash($file_path);
 								}
 							}
 						} else {
 							$this->core->echo(" FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
-							$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 							if($response['code'] == 403 && str_contains($response['data'], "CloudFront")){
 								$this->core->echo(" Retry in 20 seconds...");
 								sleep(20);
 								goto retry_download;
 							} elseif($response['code'] == 404){
+								$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 								$this->core->delete($file);
 							} else {
+								$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 								$this->core->write_error($this->core->get_print($response));
 								$this->core->move($file, $this->core->get_path("$input/../errors/{$response['code']}/".pathinfo($file, PATHINFO_BASENAME)));
 							}
@@ -302,14 +318,15 @@
 					usleep(200000);
 				} else {
 					$this->core->echo(" FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
-					$this->core->write_error("FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
 					if($response['code'] == 403 && str_contains($response['data'], "CloudFront")){
 						$this->core->echo(" Retry in 20 seconds...");
 						sleep(20);
 						goto retry_fetch;
 					} elseif($response['code'] == 404){
 						$this->core->delete($file);
+						$this->core->write_error("FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
 					} else {
+						$this->core->write_error("FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
 						$this->core->write_error($this->core->get_print($response));
 						$this->core->move($file, $this->core->get_path("$input/../errors/{$response['code']}/".pathinfo($file, PATHINFO_BASENAME)));
 					}
@@ -351,16 +368,36 @@
 				if($pos !== false){
 					$link = substr($link, 0, $pos);
 				}
-				$parts = explode("/", $link, 3);
+				$parts = explode("/", $link);
 				$user_name = $parts[0];
+				if(isset($parts[3]) && $parts[1] == 'gallery'){
+					$galery_name = "$parts[2]/$parts[3]";
+				} else {
+					$galery_name = null;
+				}
 				if(empty($user_name)) continue;
 				if(in_array($user_name, $blacklist)){
 					$this->core->echo(" Skip \"https://www.deviantart.com/$user_name\" [BLACKLIST]");
-				} else if(!file_exists($this->user_get_path($user_name))){
-					$this->user_save($user_name, $this->user_load($user_name));
+				} elseif(!file_exists($this->user_get_path($user_name))){
+					$user_data = $this->user_load($user_name);
+					if(!is_null($galery_name)){
+						$user_data['galleries'] = [$galery_name];
+					}
+					$this->user_save($user_name, $user_data);
 					$this->core->echo(" Add \"https://www.deviantart.com/$user_name\"");
 				} else {
-					$this->core->echo(" Skip \"https://www.deviantart.com/$user_name\" [ALREADY EXISTS]");
+					$user_data = $this->user_load($user_name);
+					if(!is_null($galery_name)){
+						if(is_null($user_data['galleries'])){
+							$user_data['galleries'] = [$galery_name];
+						} else {
+							if(!in_array($galery_name, $user_data['galleries'])) array_push($user_data['galleries'], $galery_name);
+						}
+						$this->user_save($user_name, $user_data);
+						$this->core->echo(" Update \"https://www.deviantart.com/$user_name\"");
+					} else {
+						$this->core->echo(" Skip \"https://www.deviantart.com/$user_name\" [ALREADY EXISTS]");
+					}
 				}
 			}
 
@@ -530,8 +567,10 @@
 
 		private function user_load(string $name) : array {
 			$file = $this->user_get_path($name);
-			if(!file_exists($file)) return ['initial' => true, 'items' => []];
-			return json_decode(file_get_contents($file), true);
+			$defaults = ['initial' => true, 'items' => [], 'galleries' => null];
+			if(!file_exists($file)) return $defaults;
+			$data = array_merge($defaults, json_decode(file_get_contents($file), true));
+			return $data;
 		}
 
 		private function user_save(string $name, array $data) : void {
@@ -545,13 +584,14 @@
 			if($previous != $current) file_put_contents($file, $current);
 		}
 
-		private function user_put_link(string $name, string $post_id, string $url) : bool {
+		private function user_put_link(string $name, string $post_id, string $url, ?string $gallery = null) : bool {
 			$file = $this->core->get_path("$this->path/data/links/$post_id.json");
 			if(file_exists($file)) return false;
 			$data = [
 				'post_id' => $post_id,
 				'name' => $name,
 				'link' => $url,
+				'galleries' => null,
 			];
 			file_put_contents($file, json_encode($data));
 			return true;
