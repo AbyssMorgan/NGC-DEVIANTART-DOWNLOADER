@@ -36,6 +36,7 @@
 				' 1 - Download',
 				' 2 - Add users',
 				' 3 - Toggle auto download ('.($auto_download ? 'Unlocked' : 'Locked').')',
+				' 4 - Clean inactive',
 			]);
 		}
 
@@ -47,6 +48,7 @@
 				case '1': return $this->tool_download();
 				case '2': return $this->tool_add_users();
 				case '3': return $this->tool_toggle_auto_download();
+				case '4': return $this->tool_clean_inactive();
 			}
 			return false;
 		}
@@ -422,6 +424,7 @@
 			if($this->config->is_changed()) $this->config->save();
 			$request = new Request(false);
 			$request->set_http_version(CURL_HTTP_VERSION_2);
+			$request->set_option(CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
 			$request->toggle_cookie(true, $this->core->get_path("$this->path/data/cookie.txt"));
 			$this->core->echo(" Login \"$url\"");
 			$response = $request->get("$url/users/login");
@@ -479,6 +482,28 @@
 			} else {
 				$this->core->echo(" Auto download enabled");
 				$this->config->update(['DEVIANTART_AUTO_DOWNLOAD' => true], true);
+			}
+			$this->core->pause(" Operation done, press any key to back to menu");
+			return false;
+		}
+
+		public function tool_clean_inactive() : bool {
+			$this->core->clear();
+			$this->core->set_tool("Clean inactive");
+			$days = $this->core->get_input_integer(" Days: ", 7);
+			
+			$users = $this->user_list();
+			$deprecated = date('U') - 86400 * $days;
+			foreach($users as $user){
+				$user_name = pathinfo($user, PATHINFO_FILENAME);
+				$user_data = $this->user_load($user_name);
+				if(is_null($user_data['changed_at'])){
+					$this->user_deactivate($user_name);
+				} else {
+					if(strtotime($user_data['changed_at']) <= $deprecated){
+						$this->user_deactivate($user_name);
+					}
+				}
 			}
 			$this->core->pause(" Operation done, press any key to back to menu");
 			return false;
