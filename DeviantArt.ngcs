@@ -326,7 +326,7 @@ class DeviantArt {
 				}
 				unset($links, $link);
 				if($can_delete){
-					$this->core->trash($file);
+					$this->core->delete($file);
 				}
 			} else {
 				$this->core->echo(" FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
