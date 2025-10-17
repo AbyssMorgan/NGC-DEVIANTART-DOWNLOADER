@@ -523,39 +523,38 @@ class DeviantArt {
 		$link = null;
 		$crawler = new Crawler($response_data);
 		$links = $crawler->filter('section > div > div > .reset-button > img')->each(function(Crawler $node, $i) : string {
-			$parts = explode("/", $node->attr('src'));
-			if(!isset($parts[9])) return '';
-			$token = explode("?", $parts[9]);
+			$link = $node->attr('src');
+			$parts = explode("/", $link);
+			if(!isset($parts[5])) return '';
+			$token = explode("?", $link);
 			return "https://{$parts[2]}/{$parts[3]}/{$parts[4]}/{$parts[5]}?{$token[1]}";
 		});
+		if(!empty($links)) return $links;
 		$element = $crawler->filter('main > div > div > section > div > div > div:nth-child(3) > span:nth-child(3) > div > div > a');
 		if($element->count() > 0){
 			$link = $element->first()->attr('href');
 			if(strpos($link, "purchase") !== false) $link = null;
 		}
-		if(!is_null($link)){
-			$links[] = $link;
-			return $links;
-		}
+		if(!is_null($link)) return [$link];
 		$element = $crawler->filter('main > div > div > div > div > div > img');
 		if($element->count() > 0){
-			$links[] = $element->first()->attr('src');
-			return $links;
+			$link = $element->first()->attr('src');
+			return [$link];
 		}
 		$element = $crawler->filter('main > div > div > div > div > div > div > div > img');
 		if($element->count() > 0){
-			$links[] = $element->first()->attr('src');
-			return $links;
+			$link = $element->first()->attr('src');
+			return [$link];
 		}
 		$element = $crawler->filter('main > div > div > div > div > div > div > div > div > img');
 		if($element->count() > 0){
-			$links[] = $element->first()->attr('src');
-			return $links;
+			$link = $element->first()->attr('src');
+			return [$link];
 		}
 		$element = $crawler->filter('main > div > div > div > div > div > div > div > div video');
 		if($element->count() > 0){
-			$links[] = $element->first()->attr('src');
-			return $links;
+			$link = $element->first()->attr('src');
+			return [$link];
 		}
 		return [];
 	}
