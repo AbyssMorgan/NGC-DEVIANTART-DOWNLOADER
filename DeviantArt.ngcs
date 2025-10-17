@@ -256,28 +256,33 @@
 				retry_fetch:
 				$response = $request->get($link_data->link);
 				if($response['code'] == 200){
-					$link = $this->get_download_url($response['data']);
-					if(is_null($link)){
+					$links = array_filter($this->get_download_url($response['data']));
+					if(empty($links)){
 						$this->core->echo(" FAILED GET DOWNLOAD URL \"$link_data->link\"");
 						$this->core->write_error("FAILED GET DOWNLOAD URL \"$link_data->link\"");
 						$this->core->trash($file);
-					} else {
+						usleep(200000);
+						return false;
+					}
+					$index = 0;
+					$can_delete = false;
+					foreach($links as $link){
 						$file_name = explode('?', $link)[0];
 						$file_name_parts = explode('/', $file_name);
 						$file_name = end($file_name_parts);
 						$file_ext = pathinfo($file_name, PATHINFO_EXTENSION);
-						$file_path = $this->core->get_path("$path/".sprintf("%010d", $link_data->post_id).".$file_ext");
+						$file_path = $this->core->get_path("$path/".sprintf("%010d", $link_data->post_id)."#$index.$file_ext");
 						if(file_exists($file_path) && filesize($file_path) > 0){
-							$this->core->delete($file);
 							$this->core->echo(" File already downloaded \"$file_path\"");
 							$this->core->write_error("File already downloaded \"$file_path\"");
-							return false;
+							$can_delete = true;
+							continue;
 						}
 						if(str_starts_with($link, "data:")){
 							$this->core->echo(" INVALID LINK \"$link_data->link\"");
 							$this->core->write_error("INVALID LINK \"$link_data->link\"");
-							$this->core->delete($file);
-							return false;
+							$can_delete = true;
+							continue;
 						}
 						retry_download:
 						$this->core->echo(" DOWNLOAD \"$link\"");
@@ -285,7 +290,7 @@
 						if($response['code'] == 200){
 							$this->core->echo(" SAVE \"$file_path\"");
 							file_put_contents($file_path, $response['data']);
-							$this->core->delete($file);
+							$can_delete = true;
 							if($skip_low_quality && (in_array($file_ext, $this->core->media->extensions_images) || $file_ext == 'gif')){
 								$size = explode("x", $this->core->media->get_image_resolution($file_path));
 								$w = intval($size[0]);
@@ -309,15 +314,20 @@
 								goto retry_download;
 							} elseif($response['code'] == 404){
 								$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
-								$this->core->delete($file);
+								$can_delete = true;
 							} else {
 								$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 								$this->core->write_error($this->core->get_print($response));
-								$this->core->move($file, $this->core->get_path("$input/../errors/{$response['code']}/".pathinfo($file, PATHINFO_BASENAME)));
+								$can_delete = true;
 							}
 						}
+						usleep(200000);
+						$index++;
 					}
-					usleep(200000);
+					unset($links, $link);
+					if($can_delete){
+						$this->core->trash($file);
+					}
 				} else {
 					$this->core->echo(" FAILED FETCH \"$link_data->link\" Code: {$response['code']}");
 					if($response['code'] == 403 && str_contains($response['data'], "CloudFront")){
@@ -509,39 +519,45 @@
 			return false;
 		}
 
-		private function get_download_url(string $response_data) : ?string {
+		private function get_download_url(string $response_data) : array {
 			$link = null;
 			$crawler = new Crawler($response_data);
+			$links = $crawler->filter('section > div > div > .reset-button > img')->each(function(Crawler $node, $i) : string {
+				$parts = explode("/", $node->attr('src'));
+				if(!isset($parts[9])) return '';
+				$token = explode("?", $parts[9]);
+				return "https://{$parts[2]}/{$parts[3]}/{$parts[4]}/{$parts[5]}?{$token[1]}";
+			});
 			$element = $crawler->filter('main > div > div > section > div > div > div:nth-child(3) > span:nth-child(3) > div > div > a');
 			if($element->count() > 0){
 				$link = $element->first()->attr('href');
 				if(strpos($link, "purchase") !== false) $link = null;
 			}
 			if(!is_null($link)){
-				return $link;
+				$links[] = $link;
+				return $links;
 			}
-
 			$element = $crawler->filter('main > div > div > div > div > div > img');
 			if($element->count() > 0){
-				return $element->first()->attr('src');
+				$links[] = $element->first()->attr('src');
+				return $links;
 			}
-
 			$element = $crawler->filter('main > div > div > div > div > div > div > div > img');
 			if($element->count() > 0){
-				return $element->first()->attr('src');
+				$links[] = $element->first()->attr('src');
+				return $links;
 			}
-
 			$element = $crawler->filter('main > div > div > div > div > div > div > div > div > img');
 			if($element->count() > 0){
-				return $element->first()->attr('src');
+				$links[] = $element->first()->attr('src');
+				return $links;
 			}
-
 			$element = $crawler->filter('main > div > div > div > div > div > div > div > div video');
 			if($element->count() > 0){
-				return $element->first()->attr('src');
+				$links[] = $element->first()->attr('src');
+				return $links;
 			}
-
-			return null;
+			return [];
 		}
 
 		private function get_value(string $name) : ?string {
