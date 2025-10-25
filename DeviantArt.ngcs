@@ -434,51 +434,35 @@ class DeviantArt {
 		if($this->config->is_changed()) $this->config->save();
 		$request = new Request(false);
 		$request->set_http_version(CURL_HTTP_VERSION_2);
-		$request->set_option(CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
-		$request->toggle_cookie(true, $this->core->get_path("$this->path/data/cookie.txt"));
+		$request->set_option(CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36");
+
+		$cookie_json = $this->core->get_path("$this->path/data/cookie.json");
+		if(!file_exists($cookie_json)){
+			$this->core->echo(" Missing required cookie file");
+			$this->core->echo(" Use EditThisCookie browser extension to export cookies and save it into:");
+			$this->core->echo(" $cookie_json");
+			$this->core->pause(" Press any key to back to menu");
+			return false;
+		}
+		$json = file_get_contents($cookie_json);
+		$cookies_array = json_decode($json ?? '[]', true) ?? [];
+		$cookie_string = '';
+		foreach($cookies_array as $cookie){
+			$cookie_string .= "{$cookie['name']}={$cookie['value']}; ";
+		}
+		$request->set_option(CURLOPT_COOKIE, rtrim($cookie_string, '; '));
 		$this->core->echo(" Login \"$url\"");
 		$response = $request->get("$url/users/login");
 		if(!in_array($response['code'], [200, 301])){
 			$this->core->echo(" Failed fetch login page");
+			$this->core->print($response);
 			$this->core->pause(" Press any key to back to menu");
 			return false;
-		}
-		if($response['code'] == 200){
-			$crawler = new Crawler($response['data']);
-			$element = $crawler->filter('form[action="/_sisu/do/step2"]')->first();
-			$csrf = $element->filter('input[name="csrf_token"]')->attr('value');
-			$lu_token = $element->filter('input[name="lu_token"]')->attr('value');
-			$response = $request->post("$url/_sisu/do/step2", [
-				'referer' => $url,
-				'referer_type' => '',
-				'challenge' => 0,
-				'csrf_token' => $csrf,
-				'lu_token' => $lu_token,
-				'username' => $login,
-			]);
-
-			$crawler = new Crawler($response['data']);
-			$element = $crawler->filter('form[action="/_sisu/do/signin"]')->first();
-			$csrf = $element->filter('input[name="csrf_token"]')->attr('value');
-			$lu_token = $element->filter('input[name="lu_token"]')->attr('value');
-			$lu_token2 = $element->filter('input[name="lu_token2"]')->attr('value');
-			$response = $request->post("$url/_sisu/do/signin", [
-				'referer' => $url,
-				'referer_type' => '',
-				'challenge' => 0,
-				'csrf_token' => $csrf,
-				'lu_token' => $lu_token,
-				'lu_token2' => $lu_token2,
-				'password' => $password,
-			]);
-			if($response['code'] != 301){
-				$this->core->echo(" Failed login \"$url\"");
-				$this->core->pause(" Press any key to back to menu");
-				return false;
-			}
-			$this->core->echo(" Login successful");
-		} else {
-			$this->core->echo(" Already logged in");
+		} elseif($response['code'] == 200){
+			$this->core->echo(" Failed login via cookie. Reason: Get login page but expected redirect into home page");
+			return false;
+		} elseif($response['code'] == 301){
+			$this->core->echo(" Login via cookie successful");
 		}
 		return $request;
 	}
@@ -631,7 +615,6 @@ class DeviantArt {
 			'post_id' => $post_id,
 			'name' => $name,
 			'link' => $url,
-			'galleries' => null,
 		];
 		file_put_contents($file, json_encode($data));
 		return true;
