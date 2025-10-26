@@ -261,7 +261,7 @@ class DeviantArt {
 					$this->core->echo(" FAILED GET DOWNLOAD URL \"$link_data->link\"");
 					$this->core->write_error("FAILED GET DOWNLOAD URL \"$link_data->link\"");
 					$this->core->trash($file);
-					usleep(200000);
+					usleep(300000);
 					return false;
 				}
 				$index = 0;
@@ -318,10 +318,10 @@ class DeviantArt {
 						} else {
 							$this->core->write_error("FAILED DOWNLOAD \"$link_data->link\" Code: {$response['code']}");
 							$this->core->write_error($this->core->get_print($response));
-							$can_delete = true;
+							$can_delete = false;
 						}
 					}
-					usleep(200000);
+					usleep(300000);
 					$index++;
 				}
 				unset($links, $link);
@@ -432,25 +432,30 @@ class DeviantArt {
 			$password = base64_decode($password);
 		}
 		if($this->config->is_changed()) $this->config->save();
+
+		$cookie_json = $this->core->get_path("$this->path/data/cookie.json");
+		$cookie_txt = $this->core->get_path("$this->path/data/cookie.txt");
+
+		if(file_exists($cookie_json)){
+			$json = file_get_contents($cookie_json);
+			$cookies = json_decode($json ?? '[]', true) ?? [];
+			$output = "# Netscape HTTP Cookie File\n\n";
+			foreach($cookies as $cookie){
+				$domain = $cookie['domain'] ?? 'deviantart.com';
+				$include_subdomains = str_starts_with($domain, '.') ? 'TRUE' : 'FALSE';
+				$secure = !empty($cookie['secure']) ? 'TRUE' : 'FALSE';
+				$expiry = isset($cookie['expirationDate']) ? intval($cookie['expirationDate']) : 0;
+				$output .= sprintf("%s\t%s\t%s\t%s\t%d\t%s\t%s\n", $domain, $include_subdomains, $cookie['path'] ?? '/', $secure, $expiry, $cookie['name'] ?? '', $cookie['value'] ?? '');
+			}
+			file_put_contents($cookie_txt, $output);
+			$this->core->delete($cookie_json);
+		}
+
 		$request = new Request(false);
 		$request->set_http_version(CURL_HTTP_VERSION_2);
 		$request->set_option(CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36");
+		$request->toggle_cookie(true, $cookie_txt);
 
-		$cookie_json = $this->core->get_path("$this->path/data/cookie.json");
-		if(!file_exists($cookie_json)){
-			$this->core->echo(" Missing required cookie file");
-			$this->core->echo(" Use EditThisCookie browser extension to export cookies and save it into:");
-			$this->core->echo(" $cookie_json");
-			$this->core->pause(" Press any key to back to menu");
-			return false;
-		}
-		$json = file_get_contents($cookie_json);
-		$cookies_array = json_decode($json ?? '[]', true) ?? [];
-		$cookie_string = '';
-		foreach($cookies_array as $cookie){
-			$cookie_string .= "{$cookie['name']}={$cookie['value']}; ";
-		}
-		$request->set_option(CURLOPT_COOKIE, rtrim($cookie_string, '; '));
 		$this->core->echo(" Login \"$url\"");
 		$response = $request->get("$url/users/login");
 		if(!in_array($response['code'], [200, 301])){
@@ -460,6 +465,9 @@ class DeviantArt {
 			return false;
 		} elseif($response['code'] == 200){
 			$this->core->echo(" Failed login via cookie. Reason: Get login page but expected redirect into home page");
+			$this->core->echo(" Use EditThisCookie browser extension to export cookies and save it into:");
+			$this->core->echo(" $cookie_json");
+			$this->core->pause(" Press any key to back to menu");
 			return false;
 		} elseif($response['code'] == 301){
 			$this->core->echo(" Login via cookie successful");
