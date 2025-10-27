@@ -419,20 +419,6 @@ class DeviantArt {
 	}
 
 	private function login(string $url) : Request|bool {
-		$login = $this->config->get('DEVIANTART_LOGIN');
-		if(is_null($login)){
-			$login = $this->core->get_input(" Login: ");
-			$this->config->set('DEVIANTART_LOGIN', $login);
-		}
-		$password = $this->config->get('DEVIANTART_PASSWORD');
-		if(is_null($password)){
-			$password = $this->core->get_input_password(" Password: ");
-			$this->config->set('DEVIANTART_PASSWORD', base64_encode($password));
-		} else {
-			$password = base64_decode($password);
-		}
-		if($this->config->is_changed()) $this->config->save();
-
 		$cookie_json = $this->core->get_path("$this->path/data/cookie.json");
 		$cookie_txt = $this->core->get_path("$this->path/data/cookie.txt");
 
